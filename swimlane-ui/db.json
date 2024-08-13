@@ -1,0 +1,13 @@
+{
+    "lanes": [
+      { "id": "To Do", "title": "To Do", "blocks": ["Bug-1", "Bug-2"] },
+      { "id": "In Progress", "title": "In Progress", "blocks": [] },
+      { "id": "Testing/QA", "title": "Testing/QA", "blocks": [] },
+      { "id": "Done", "title": "Done", "blocks": [] }
+    ],
+    "blocks": {
+      "Bug-1": { "id": "Bug-1", "title": "Bug 1", "description": "Details of Bug 1", "history": [] },
+      "Bug-2": { "id": "Bug-2", "title": "Bug 2", "description": "Details of Bug 2", "history": [] }
+    }
+  }
+  
