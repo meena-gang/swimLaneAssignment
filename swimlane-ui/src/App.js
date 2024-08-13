@@ -1,28 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { DragDropContext } from 'react-beautiful-dnd';
-import { useSelector, useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import Swimlane from './components/Swimlane';
 import BlockTransitionDialog from './components/BlockTransitionDialog';
 import BlockDetails from './components/BlockDetails';
+import Filter from './components/Filter';
 import { moveBlock } from './store/slice';
-import { laneConfig } from './config/laneConfig';
-import { MenuItem, Select, FormControl, InputLabel,Typography } from '@mui/material';
 
 const App = () => {
   const dispatch = useDispatch();
-  const lanes = useSelector(state => state.swimlane.lanes);
-  const blocks = useSelector(state => state.swimlane.blocks);
+  const [lanes, setLanes] = useState([]);
+  const [blocks, setBlocks] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [currentBlock, setCurrentBlock] = useState(null);
   const [transitionFrom, setTransitionFrom] = useState(null);
   const [destination, setDestination] = useState(null);
-  const [filter, setFilter] = useState('All');
+  const filter = useSelector(state => state.swimlane.filter);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const lanesResponse = await axios.get('http://localhost:5000/lanes');
+        const blocksResponse = await axios.get('http://localhost:5000/blocks');
+        setLanes(lanesResponse.data);
+        setBlocks(blocksResponse.data);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const filteredBlocks = Object.values(blocks).filter(block => {
+    if (filter.attribute && filter.value) {
+      return block[filter.attribute]?.toLowerCase().includes(filter.value.toLowerCase());
+    }
+    return true;
+  });
 
   const onDragEnd = (result) => {
     if (!result.destination) return;
 
     const { source, destination: dest, draggableId } = result;
+
     setTransitionFrom(source.droppableId);
     setCurrentBlock(draggableId);
     setDestination(dest.droppableId);
@@ -34,26 +56,40 @@ const App = () => {
     setDetailsOpen(true);
   };
 
-  const handleConfirm = (transitionData) => {
+  const handleConfirm = async (transitionData) => {
     if (currentBlock && destination) {
-      const blockId = currentBlock;
+      const blockId = currentBlock.id;
       const fromLaneId = transitionFrom;
       const toLaneId = destination;
-
+  
       if (!blockId) {
         console.error('Block ID is undefined');
         return;
       }
-
+  
       const allowedTransitions = laneConfig[fromLaneId]?.allowedTransitions || [];
       if (allowedTransitions.includes(toLaneId)) {
         dispatch(moveBlock({ blockId, fromLaneId, toLaneId, transitionData }));
+        
+        try {
+          await axios.patch(`http://localhost:5000/blocks/${blockId}`, {
+            history: [...currentBlock.history, {
+              from: fromLaneId,
+              to: toLaneId,
+              date: new Date().toISOString(),
+              transitionData
+            }]
+          });
+        } catch (error) {
+          console.error('Error updating block:', error);
+        }
       } else {
         console.error('Transition not allowed');
       }
     }
     setDialogOpen(false);
   };
+  
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
@@ -63,35 +99,18 @@ const App = () => {
     setDetailsOpen(false);
   };
 
-  const handleFilterChange = (event) => {
-    setFilter(event.target.value);
-  };
-
-  const filteredLanes = filter === 'All' ? lanes : lanes.filter(lane => lane.id === filter);
-
   return (
     <>
-      <Typography variant="h4" gutterBottom align="center" sx={{ mb: 2 }}>
-        Swimlane User Interface
-      </Typography>
-      <FormControl sx={{ minWidth: 120, mb: 2 }}>
-        <InputLabel>Filter</InputLabel>
-        <Select
-          value={filter}
-          onChange={handleFilterChange}
-          label="Filter"
-        >
-          <MenuItem value="All">All</MenuItem>
-          {Object.keys(laneConfig).map(laneId => (
-            <MenuItem key={laneId} value={laneId}>{laneId}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
+      <Filter />
       <DragDropContext onDragEnd={onDragEnd}>
         <div style={{ display: 'flex', overflowX: 'auto' }}>
-          {filteredLanes.map(lane => (
-            <Swimlane key={lane.id} lane={lane} onBlockClick={handleBlockClick} />
+          {lanes.map(lane => (
+            <Swimlane
+              key={lane.id}
+              lane={lane}
+              blocks={filteredBlocks.filter(block => lane.blocks.includes(block.id))}
+              onBlockClick={handleBlockClick}
+            />
           ))}
         </div>
         {currentBlock && (
@@ -99,7 +118,7 @@ const App = () => {
             open={dialogOpen}
             onClose={handleCloseDialog}
             onConfirm={handleConfirm}
-            block={blocks[currentBlock]}
+            block={blocks[currentBlock]} // Pass block data to the dialog
           />
         )}
         {detailsOpen && (
